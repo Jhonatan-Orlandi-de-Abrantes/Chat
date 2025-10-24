@@ -1,7 +1,7 @@
 import socket, threading, json, tkinter as tk, queue, time
 from tkinter import scrolledtext, messagebox
 
-HOST = "127.0.0.1"
+HOST = "192.168.56.1"
 PORT = 12345
 
 class ChatClient:
@@ -230,3 +230,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = ChatClient(root)
     root.mainloop()
+
