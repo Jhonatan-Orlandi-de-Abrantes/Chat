@@ -1,11 +1,11 @@
 import asyncio, json, os, hashlib, time, socket
 from typing import Dict, List
 
-HOST = "0.0.0.0"
+HOST = '0.0.0.0'
 PORT = 12345
-USERS_FILE = "users.json"
-MESSAGES_FILE = "messages.json"
-MAX_HISTORY = 100
+USERS_FILE = 'users.json'
+MESSAGES_FILE = 'messages.json'
+MAX_HISTORY = 1000
 
 users: Dict[str, dict] = {}
 messages: List[dict] = []
@@ -14,30 +14,30 @@ tokens: Dict[str, dict] = {}
 
 def load_json(path, default):
     if not os.path.exists(path):
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, 'w', encoding='utf-8') as f:
             json.dump(default, f, ensure_ascii=False)
         return default
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, 'r', encoding='utf-8') as f:
         try:
             return json.load(f)
         except json.JSONDecodeError:
             return default
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 def hash_password(pw: str) -> str:
-    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+    return hashlib.sha256(pw.encode('utf-8')).hexdigest()
 
 def make_token(username: str) -> str:
-    return hashlib.sha256(f"{username}-{time.time()}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f'{username}-{time.time()}'.encode('utf-8')).hexdigest()
 
 users = load_json(USERS_FILE, {})
 messages = load_json(MESSAGES_FILE, [])
 
 def pack(obj):
-    return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+    return (json.dumps(obj, ensure_ascii=False) + '\n').encode('utf-8')
 
 async def send_writer(writer: asyncio.StreamWriter, obj):
     try:
@@ -50,7 +50,7 @@ async def broadcast(obj, exclude_writer=None):
     data = pack(obj)
     remove = []
     for c in clients:
-        w = c["writer"]
+        w = c['writer']
         if exclude_writer is not None and w is exclude_writer:
             continue
         try:
@@ -60,18 +60,18 @@ async def broadcast(obj, exclude_writer=None):
             remove.append(c)
     for c in remove:
         try:
-            c["writer"].close()
-            await c["writer"].wait_closed()
+            c['writer'].close()
+            await c['writer'].wait_closed()
         except:
             pass
         if c in clients:
             clients.remove(c)
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    addr = writer.get_extra_info("peername")
-    meta = {"addr": addr, "username": None, "display_name": None, "token": None}
-    print(f"[SERVER] Nova conexão {addr}")
-    sock = writer.get_extra_info("socket")
+    addr = writer.get_extra_info('peername')
+    meta = {'addr': addr, 'username': None, 'display_name': None, 'token': None}
+    print(f'[SERVER] Nova conexão {addr}')
+    sock = writer.get_extra_info('socket')
     if sock:
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
@@ -90,92 +90,91 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if not line:
                 break
             try:
-                s = line.decode("utf-8").rstrip("\n")
+                s = line.decode('utf-8').rstrip('\n')
             except Exception:
-                await send_writer(writer, {"type":"error","message":"encoding error"})
+                await send_writer(writer, {'type':'error','message':'encoding error'})
                 continue
             if not s:
                 continue
-            print(f"[SERVER] Recebido de {addr}: {s}")
+            print(f'[SERVER] Recebido de {addr}: {s}')
             try:
                 obj = json.loads(s)
             except Exception:
-                await send_writer(writer, {"type":"error","message":"json inválido"})
+                await send_writer(writer, {'type':'error','message':'json inválido'})
                 continue
+            action = obj.get('action')
 
-            action = obj.get("action")
-
-            if action == "register":
-                username = obj.get("username","").strip()
-                password = obj.get("password","")
+            if action == 'register':
+                username = obj.get('username','').strip()
+                password = obj.get('password','')
                 if not username or not password:
-                    await send_writer(writer, {"type":"error","message":"username/senha vazios"})
+                    await send_writer(writer, {'type':'error','message':'username/senha vazios'})
                     continue
                 if username in users:
-                    await send_writer(writer, {"type":"error","message":"username já existe"})
+                    await send_writer(writer, {'type':'error','message':'username já existe'})
                 else:
-                    users[username] = {"password_hash": hash_password(password), "created": time.time()}
+                    users[username] = {'password_hash': hash_password(password), 'created': time.time()}
                     save_json(USERS_FILE, users)
-                    await send_writer(writer, {"type":"ok","action":"register","message":"registrado com sucesso"})
+                    await send_writer(writer, {'type':'ok','action':'register','message':'registrado com sucesso'})
 
-            elif action == "login":
-                username = obj.get("username","").strip()
-                password = obj.get("password","")
+            elif action == 'login':
+                username = obj.get('username','').strip()
+                password = obj.get('password','')
                 if not username or not password:
-                    await send_writer(writer, {"type":"error","message":"username/senha vazios"})
+                    await send_writer(writer, {'type':'error','message':'username/senha vazios'})
                     continue
-                if username not in users or users[username]["password_hash"] != hash_password(password):
-                    await send_writer(writer, {"type":"error","message":"credenciais inválidas"})
+                if username not in users or users[username]['password_hash'] != hash_password(password):
+                    await send_writer(writer, {'type':'error','message':'credenciais inválidas'})
                 else:
                     token = make_token(username)
-                    meta["username"] = username
-                    meta["display_name"] = username
-                    meta["token"] = token
+                    meta['username'] = username
+                    meta['display_name'] = username
+                    meta['token'] = token
                     tokens[token] = meta
-                    clients.append({"writer": writer, "meta": meta})
-                    await send_writer(writer, {"type":"ok","action":"login","token":token,"display_name":username})
+                    clients.append({'writer': writer, 'meta': meta})
+                    await send_writer(writer, {'type':'ok','action':'login','token':token,'display_name':username})
                     hist = messages[-MAX_HISTORY:]
-                    await send_writer(writer, {"type":"history","messages":hist})
-                    await broadcast({"type":"info","message":f"{username} entrou no chat."}, exclude_writer=None)
-                    print(f"[SERVER] Login OK {username} token {token}")
+                    await send_writer(writer, {'type':'history','messages':hist})
+                    await broadcast({'type':'info','message':f'{username} entrou no chat.'}, exclude_writer=None)
+                    print(f'[SERVER] Login OK {username} token {token}')
 
-            elif action == "set_name":
-                token = obj.get("token")
-                name = obj.get("name","").strip()
+            elif action == 'set_name':
+                token = obj.get('token')
+                name = obj.get('name','').strip()
                 m = tokens.get(token)
                 if not m or m is not meta:
-                    await send_writer(writer, {"type":"error","message":"não autenticado"})
+                    await send_writer(writer, {'type':'error','message':'não autenticado'})
                     continue
-                meta["display_name"] = name or meta["username"]
-                await send_writer(writer, {"type":"ok","action":"set_name","display_name":meta["display_name"]})
-                await broadcast({"type":"info","message":f"{meta['username']} agora é {meta['display_name']}"})
+                meta['display_name'] = name or meta['username']
+                await send_writer(writer, {'type':'ok','action':'set_name','display_name':meta['display_name']})
+                await broadcast({'type':'info','message':f'{meta['username']} agora é {meta['display_name']}'})
 
-            elif action == "send":
-                token = obj.get("token")
-                text = obj.get("text","")
+            elif action == 'send':
+                token = obj.get('token')
+                text = obj.get('text','')
                 m = tokens.get(token)
                 if not m or m is not meta:
-                    await send_writer(writer, {"type":"error","message":"token inválido ou não autenticado"})
+                    await send_writer(writer, {'type':'error','message':'token inválido ou não autenticado'})
                     continue
                 if not text.strip():
                     continue
-                ev = {"type":"message","from": meta["display_name"], "text": text, "timestamp": time.time()}
+                ev = {'type':'message','from': meta['display_name'], 'text': text, 'timestamp': time.time()}
                 messages.append(ev)
                 if len(messages) > 500:
                     del messages[:-500]
                 save_json(MESSAGES_FILE, messages)
                 await broadcast(ev, exclude_writer=writer)
             else:
-                await send_writer(writer, {"type":"error","message":"ação desconhecida"})
+                await send_writer(writer, {'type':'error','message':'ação desconhecida'})
 
     except Exception as e:
-        print(f"[SERVER] Erro conexão {addr}: {e}")
+        print(f'[SERVER] Erro conexão {addr}: {e}')
     finally:
-        print(f"[SERVER] Conexão encerrada {addr}")
+        print(f'[SERVER] Conexão encerrada {addr}')
         for c in list(clients):
-            if c["writer"] is writer:
+            if c['writer'] is writer:
                 clients.remove(c)
-        t = meta.get("token")
+        t = meta.get('token')
         if t and tokens.get(t) is meta:
             tokens.pop(t, None)
         try:
@@ -183,18 +182,31 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             await writer.wait_closed()
         except:
             pass
-        if meta.get("display_name"):
-            await broadcast({"type":"info","message":f"{meta['display_name']} saiu do chat."}, exclude_writer=None)
+        if meta.get('display_name'):
+            await broadcast({'type':'info','message':f'{meta['display_name']} saiu do chat.'}, exclude_writer=None)
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return '127.0.0.1'
 
 async def main():
     server = await asyncio.start_server(handle_client, HOST, PORT)
     addr = server.sockets[0].getsockname()
-    print(f"[SERVER] Servidor asyncio rodando em {addr}")
+    local_ip = get_local_ip()
+    print(f'[SERVER] Servidor asyncio rodando em {addr}')
+    print(f'[SERVER] Endereço LAN/VPN: {local_ip}: {PORT}')
+    print(f'[SERVER] Compartilhe esse IP com seus amigos para conectar-se.')
     async with server:
         await server.serve_forever()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Servidor encerrado manualmente")
+        print('Servidor encerrado manualmente')
